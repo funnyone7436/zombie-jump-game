@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Jump Zombie Game</title>
+  <style>
+    html, body {
+      margin: 0;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      font-family: sans-serif;
+      background: black;
+      transition: background-color 0.2s ease;
+    }
+    canvas {
+      display: block;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 15px;
+      color: white;
+      font-size: 20px;
+      text-shadow: 2px 2px 4px black;
+      z-index: 10;
+    }
+    #startButton {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      padding: 12px 24px;
+      font-size: 20px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      z-index: 10;
+    }
+	#instructions {
+	  position: absolute;
+	  top: 10%;
+	  left: 53%; /* Slightly to the right */
+	  transform: translateX(-50%);
+	  width: 90%;
+	  max-width: 600px;
+	  background: rgba(0, 0, 0, 0.8);
+	  color: white;
+	  padding: 20px 30px;
+	  border-radius: 15px;
+	  font-size: 16px;
+	  z-index: 9;
+	  line-height: 1.6;
+	  text-align: left;
+	}
+	#instructions h2 {
+	  margin-top: 0;
+	  text-align: center;
+	  font-size: 24px;
+	  transform: translateX(-17%); /* Keep title more centered */
+	}
+
+    #instructions ul {
+      padding-left: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<video id="video" autoplay muted playsinline style="display:none;"></video>
+<canvas id="gameCanvas"></canvas>
+
+<div id="ui">
+  Score: <span id="score">0</span> |
+  Time: <span id="timer">60</span>s
+</div>
+
+<button id="startButton">Start Game</button>
+
+<div id="instructions">
+  <h2>🧟‍♂️ Jump Zombie Game — How to Play</h2>
+  <p><strong>🎯 Goal:</strong><br>
+    Use your body movements to control and blast zombies.<br>
+    Survive for <span style="color:#00ffcc;"><strong>60 seconds</strong></span> and rack up the <span style="color:#ffcc00;"><strong>highest score</strong></span>!
+  </p>
+
+<p><strong>🕹️ Controls:</strong><br>
+  <span style="color:#66ccff;"><strong>Jump</strong></span> — Launches 3 zombies upward and 3 downward.<br>
+  <span style="color:#66ff66;"><strong>Wave Left Hand</strong></span> — Blasts 5 zombies to the left.<br>
+  <span style="color:#ff6666;"><strong>Wave Right Hand</strong></span> — Blasts 5 zombies to the right.<br>
+  <span style="color:#ffcc00;"><strong>Raise Both Hands Above Head for 1 second </strong></span> — Triggers epic 360° laser with explosion.
+</p>
+
+
+  <p><strong>📸 Requirements:</strong><br>
+    - A webcam (desktop or phone with good lighting).<br>
+    - Allow camera access when prompted.<br>
+    - Use hands and body gestures in front of the camera.
+  </p>
+</div>
+
+<audio id="popSound" src="pop.mp3"></audio>
+<audio id="bgMusic" src="horror.mp3" loop></audio>
+<audio id="laserSound" src="laser.mp3"></audio>
+
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.4/pose.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const videoElement = document.getElementById('video');
+const popSound = document.getElementById('popSound');
+const bgMusic = document.getElementById('bgMusic');
+const scoreDisplay = document.getElementById('score');
+const timerDisplay = document.getElementById('timer');
+const startButton = document.getElementById('startButton');
+const instructionBox = document.getElementById('instructions');
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+let zombies = [];
+let score = 0;
+let gameTime = 60;
+let gameRunning = false;
+let audioEnabled = false;
+let handsAboveHeadCount = 0;
+let lastCheckTime = 0;
+let showLaser = false;
+let laserTimer = 0;
+let handsRaised = false;
+let jumpDetected = false;
+
+let previousNoseY = null;
+let previousLeftX = null;
+let previousRightX = null;
+const jumpThreshold = 0.045;
+const waveThreshold = 0.2;
+
+const bgImage = new Image();
+bgImage.src = 'bg.jpg';
+
+const zombieImages = [];
+for (let i = 1; i <= 7; i++) {
+  const img = new Image();
+  img.src = `zb${i}.png`;
+  zombieImages.push(img);
+}
+
+class Zombie {
+  constructor() {
+    this.baseX = Math.random() * (canvas.width - 200) + 100;
+    this.y = Math.random() * 100 + canvas.height * 0.5;
+    this.scale = 0.08;
+    this.image = zombieImages[Math.floor(Math.random() * zombieImages.length)];
+    this.speed = 0.0002 + Math.random() * 0.0002;
+    this.driftAmplitude = 30 + Math.random() * 20;
+    this.phase = Math.random() * Math.PI * 2;
+    this.time = 0;
+    this.flyOut = false;
+    this.flyDirection = 0;
+  }
+
+  update() {
+    this.scale += this.speed;
+    this.time += 0.02;
+    if (this.flyOut) {
+      if (this.flyDirection === -1) this.xOffset = (this.xOffset || 0) - 15;
+      if (this.flyDirection === 1) this.xOffset = (this.xOffset || 0) + 15;
+      if (this.flyDirection === -2) this.y -= 15;
+      if (this.flyDirection === 2) this.y += 15;
+    }
+  }
+
+  draw(ctx) {
+    const swayX = Math.sin(this.time + this.phase) * this.driftAmplitude;
+    const x = (this.baseX + swayX) + (this.xOffset || 0);
+    const width = this.image.width * this.scale;
+    const height = this.image.height * this.scale;
+    ctx.drawImage(this.image, x - width / 2, this.y - height / 2, width, height);
+  }
+
+  isGone() {
+    return (
+      (this.flyOut && (this.xOffset < -canvas.width || this.xOffset > canvas.width)) ||
+      (this.flyOut && (this.y < -200 || this.y > canvas.height + 200))
+    );
+  }
+}
+
+function spawnZombie() {
+  if (zombieImages.every(img => img.complete)) {
+    zombies.push(new Zombie());
+  }
+}
+
+function flyZombies(directionCode, count) {
+  let affected = 0;
+  for (const z of zombies) {
+    if (!z.flyOut) {
+      z.flyOut = true;
+      z.flyDirection = directionCode;
+      score++;
+      affected++;
+      if (affected >= count) break;
+    }
+  }
+  scoreDisplay.textContent = score;
+  if (audioEnabled) {
+    popSound.currentTime = 0;
+    popSound.play().catch(e => console.warn("⚠️ Play failed:", e));
+  }
+
+  document.body.style.backgroundColor = "#220000";
+  setTimeout(() => document.body.style.backgroundColor = "black", 150);
+}
+
+function onResults(results) {
+  if (!gameRunning || !results.poseLandmarks) return;
+  const landmarks = results.poseLandmarks;
+  const now = Date.now();
+  const noseY = landmarks[0].y;
+  const leftX = landmarks[15].x;
+  const rightX = landmarks[16].x;
+  const leftWristY = landmarks[15].y;
+  const rightWristY = landmarks[16].y;
+  
+  if (results.poseLandmarks) {
+  drawPoseLandmarks(results.poseLandmarks);
+}
+
+  if (previousNoseY !== null && previousNoseY - noseY > jumpThreshold) {
+    flyZombies(-2, 3);
+    flyZombies(2, 3);
+	jumpDetected = true;
+  } else {jumpDetected = false;}
+  
+  previousNoseY = noseY;
+
+  if (previousLeftX !== null && Math.abs(leftX - previousLeftX) > waveThreshold) {
+    flyZombies(-1, 5);
+  }
+  previousLeftX = leftX;
+
+  if (previousRightX !== null && Math.abs(rightX - previousRightX) > waveThreshold) {
+    flyZombies(1, 5);
+  }
+  previousRightX = rightX;
+
+  const handsAboveHead = leftWristY < noseY && rightWristY < noseY;
+  if (handsAboveHead) {
+    if (now - lastCheckTime > 100) {
+      handsAboveHeadCount++;
+      lastCheckTime = now;
+    }
+  } else {
+    handsAboveHeadCount = 0;
+  }
+
+	if (handsAboveHeadCount >= 10 && !showLaser && jumpDetected) {
+	  showLaser = true;
+	  laserTimer = 15;
+	  jumpDetected = false;
+
+	  // Play laser sound
+	  const laserSound = document.getElementById('laserSound');
+	  laserSound.currentTime = 0;
+	  laserSound.play().catch(e => console.warn("⚠️ Laser sound failed to play:", e));
+
+	  // Clear zombies
+	  score += zombies.length;
+	  zombies = [];
+	  scoreDisplay.textContent = score;
+	  handsAboveHeadCount = 0;
+	}
+}
+
+const pose = new Pose({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.4/${file}`
+});
+pose.setOptions({
+  modelComplexity: 1,
+  smoothLandmarks: true,
+  enableSegmentation: false,
+  minDetectionConfidence: 0.6,
+  minTrackingConfidence: 0.6
+});
+pose.onResults(onResults);
+
+const camera = new Camera(videoElement, {
+  onFrame: async () => {
+    await pose.send({ image: videoElement });
+  },
+  width: 640,
+  height: 480
+});
+
+function gameLoop() {
+  if (bgImage.complete) {
+    ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  zombies.forEach(z => z.update());
+  zombies = zombies.filter(z => !z.isGone());
+  [...zombies].reverse().forEach(z => z.draw(ctx));
+
+  if (showLaser) {
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const laserCount = 24;
+    const beamWidth = 32;
+
+    for (let i = 0; i < laserCount; i++) {
+      const angle = (Math.PI * 2 * i) / laserCount;
+      const radius = Math.max(canvas.width, canvas.height) * 1.2;
+      const startX = centerX + radius * Math.cos(angle);
+      const startY = centerY + radius * Math.sin(angle);
+      const hue = (i * 360) / laserCount;
+      ctx.strokeStyle = `hsl(${hue}, 100%, 60%)`;
+      ctx.lineWidth = beamWidth;
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(centerX, centerY);
+      ctx.stroke();
+    }
+
+    const splashRadius = 100 + Math.random() * 50;
+    const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, splashRadius);
+    gradient.addColorStop(0, 'rgba(255, 255, 200, 0.9)');
+    gradient.addColorStop(0.5, 'rgba(255, 150, 50, 0.4)');
+    gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, splashRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    laserTimer--;
+    if (laserTimer <= 0) showLaser = false;
+  }
+  
+  
+
+  requestAnimationFrame(gameLoop);
+}
+
+function drawPoseLandmarks(landmarks) {
+  if (!landmarks) return;
+  ctx.save();
+  ctx.fillStyle = 'lime';
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 2;
+
+  for (let i = 0; i < landmarks.length; i++) {
+    const x = landmarks[i].x * canvas.width;
+    const y = landmarks[i].y * canvas.height;
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+
+function startTimer() {
+  const interval = setInterval(() => {
+    if (!gameRunning) return clearInterval(interval);
+    gameTime--;
+    timerDisplay.textContent = gameTime;
+    if (gameTime <= 0) {
+      gameRunning = false;
+      alert("Time's up! Final score: " + score);
+    }
+  }, 1000);
+}
+
+startButton.addEventListener('click', () => {
+  audioEnabled = true;
+  popSound.play().catch(() => {});
+  popSound.pause();
+  popSound.currentTime = 0;
+
+  bgMusic.volume = 0.4;
+  bgMusic.play().catch(() => {});
+  startButton.style.display = 'none';
+  instructionBox.style.display = 'none';
+
+  gameRunning = true;
+  camera.start();
+  gameLoop();
+  startTimer();
+
+  setInterval(() => {
+    if (gameRunning) spawnZombie();
+  }, 1);
+});
+</script>
+
+</body>
+</html>
