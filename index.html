@@ -71,6 +71,15 @@
 </head>
 <body>
 
+
+<div style="position:absolute; bottom:10px; right:10px; z-index:10; color:white; font-size:14px; text-align:right;">
+  <p style="margin: 0;">🔐 No Worries, just fun!</p>
+  <a href="https://github.com/funnyone7436/zombie-jump-game" target="_blank" style="color:#0ff; text-decoration:none;">
+    🔍 View the full source on GitHub
+  </a>
+</div>
+
+
 <video id="video" autoplay muted playsinline style="display:none;"></video>
 <canvas id="gameCanvas"></canvas>
 
@@ -83,25 +92,27 @@
 
 <div id="instructions">
   <h2>🧟‍♂️ Jump Zombie Game — How to Play</h2>
+
   <p><strong>🎯 Goal:</strong><br>
     Use your body movements to control and blast zombies.<br>
     Survive for <span style="color:#00ffcc;"><strong>60 seconds</strong></span> and rack up the <span style="color:#ffcc00;"><strong>highest score</strong></span>!
   </p>
 
-<p><strong>🕹️ Controls:</strong><br>
-  <span style="color:#66ccff;"><strong>Jump</strong></span> — Launches 3 zombies upward and 3 downward.<br>
-  <span style="color:#66ff66;"><strong>Wave Left Hand</strong></span> — Blasts 5 zombies to the left.<br>
-  <span style="color:#ff6666;"><strong>Wave Right Hand</strong></span> — Blasts 5 zombies to the right.<br>
-  <span style="color:#ffcc00;"><strong>Raise Both Hands Above Head for 1 second </strong></span> — Triggers epic 360° laser with explosion.
-</p>
-
+  <p><strong>🕹️ Controls:</strong><br>
+    <span style="color:#66ccff;"><strong>Jump</strong></span> — Launches 3 zombies upward and 3 downward.<br>
+    <span style="color:#66ff66;"><strong>Wave Left Hand</strong></span> — Blasts 5 zombies to the left.<br>
+    <span style="color:#ff6666;"><strong>Wave Right Hand</strong></span> — Blasts 5 zombies to the right.<br>
+    <span style="color:#ffcc00;"><strong>Raise Both Hands & Jump</strong></span> — Triggers epic 360° laser with explosion.
+  </p>
 
   <p><strong>📸 Requirements:</strong><br>
     - A webcam (desktop or phone with good lighting).<br>
     - Allow camera access when prompted.<br>
-    - Use hands and body gestures in front of the camera.
+    - Use hands and body gestures in front of the camera.<br>
+    - <span style="color:lightgreen;">🟢 Green dots show your detected body points</span> — make sure they appear and track you smoothly.
   </p>
 </div>
+
 
 <audio id="popSound" src="pop.mp3"></audio>
 <audio id="bgMusic" src="horror.mp3" loop></audio>
@@ -406,7 +417,7 @@ startButton.addEventListener('click', () => {
 
   setInterval(() => {
     if (gameRunning) spawnZombie();
-  }, 1);
+  }, 10);
 });
 </script>
 
