@@ -27,6 +27,10 @@
       font-size: 20px;
       text-shadow: 2px 2px 4px black;
       z-index: 10;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      user-select: none;
     }
     #startButton {
       position: absolute;
@@ -41,36 +45,50 @@
       cursor: pointer;
       z-index: 10;
     }
-	#instructions {
-	  position: absolute;
-	  top: 10%;
-	  left: 53%; /* Slightly to the right */
-	  transform: translateX(-50%);
-	  width: 90%;
-	  max-width: 600px;
-	  background: rgba(0, 0, 0, 0.8);
-	  color: white;
-	  padding: 20px 30px;
-	  border-radius: 15px;
-	  font-size: 16px;
-	  z-index: 9;
-	  line-height: 1.6;
-	  text-align: left;
-	}
-	#instructions h2 {
-	  margin-top: 0;
-	  text-align: center;
-	  font-size: 24px;
-	  transform: translateX(-17%); /* Keep title more centered */
-	}
-
+    #instructions {
+      position: absolute;
+      top: 10%;
+      left: 53%;
+      transform: translateX(-50%);
+      width: 90%;
+      max-width: 600px;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 20px 30px;
+      border-radius: 15px;
+      font-size: 16px;
+      z-index: 9;
+      line-height: 1.6;
+      text-align: left;
+    }
+    #instructions h2 {
+      margin-top: 0;
+      text-align: center;
+      font-size: 24px;
+      transform: translateX(-17%);
+    }
     #instructions ul {
       padding-left: 20px;
+    }
+    /* Toggle style */
+    .toggle {
+      font-size: 14px;
+      background: rgba(0,0,0,0.35);
+      padding: 6px 10px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .toggle input {
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+      accent-color: #39ff14; /* neon green */
     }
   </style>
 </head>
 <body>
-
 
 <div style="position:absolute; bottom:10px; right:10px; z-index:10; color:white; font-size:14px; text-align:right;">
   <p style="margin: 0;">🔐 No worries, just fun!</p>
@@ -79,13 +97,18 @@
   </a>
 </div>
 
-
 <video id="video" autoplay muted playsinline style="display:none;"></video>
 <canvas id="gameCanvas"></canvas>
 
 <div id="ui">
-  Score: <span id="score">0</span> |
-  Time: <span id="timer">60</span>s
+  <div>
+    Score: <span id="score">0</span> |
+    Time: <span id="timer">60</span>s
+  </div>
+  <label class="toggle" title="Press D to toggle">
+    <input type="checkbox" id="toggleDots" checked>
+    <span>🔎 Debug Dots</span>
+  </label>
 </div>
 
 <button id="startButton">Start Game</button>
@@ -109,15 +132,13 @@
     - A webcam (desktop or phone with good lighting).<br>
     - Allow camera access when prompted.<br>
     - Use hands and body gestures in front of the camera.<br>
-<span style="color:lightgreen;">🟢 Green dots show your detected body points</span> — make sure they appear and track you smoothly.
+    <br><em>(Tip: toggle with the “🔎 Debug Dots” switch or press <strong>D</strong>.)</em>
   </p>
 </div>
-
 
 <audio id="popSound" src="pop.mp3"></audio>
 <audio id="bgMusic" src="horror.mp3" loop></audio>
 <audio id="laserSound" src="laser.mp3"></audio>
-
 
 <!-- MediaPipe -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.4/pose.js"></script>
@@ -133,6 +154,24 @@ const scoreDisplay = document.getElementById('score');
 const timerDisplay = document.getElementById('timer');
 const startButton = document.getElementById('startButton');
 const instructionBox = document.getElementById('instructions');
+const toggleDotsEl = document.getElementById('toggleDots');
+
+/* === NEW: single source of truth for debug dots === */
+let showDebugDots = false; // toggle this to show/hide green pose dots
+
+// Keep UI checkbox and variable in sync
+toggleDotsEl.checked = showDebugDots;
+toggleDotsEl.addEventListener('change', (e) => {
+  showDebugDots = e.target.checked;
+});
+
+// Keyboard shortcut: D to toggle
+window.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() === 'd') {
+    showDebugDots = !showDebugDots;
+    toggleDotsEl.checked = showDebugDots;
+  }
+});
 
 function resizeCanvas() {
   canvas.width = window.innerWidth;
@@ -239,6 +278,7 @@ function flyZombies(directionCode, count) {
 
 function onResults(results) {
   if (!gameRunning || !results.poseLandmarks) return;
+
   const landmarks = results.poseLandmarks;
   const now = Date.now();
   const noseY = landmarks[0].y;
@@ -246,19 +286,23 @@ function onResults(results) {
   const rightX = landmarks[16].x;
   const leftWristY = landmarks[15].y;
   const rightWristY = landmarks[16].y;
-  
-  if (results.poseLandmarks) {
-  drawPoseLandmarks(results.poseLandmarks);
-}
 
+  /* === draw dots only when enabled === */
+  if (showDebugDots) {
+    drawPoseLandmarks(landmarks);
+  }
+
+  // Jump detection
   if (previousNoseY !== null && previousNoseY - noseY > jumpThreshold) {
     flyZombies(-2, 3);
     flyZombies(2, 3);
-	jumpDetected = true;
-  } else {jumpDetected = false;}
-  
+    jumpDetected = true;
+  } else {
+    jumpDetected = false;
+  }
   previousNoseY = noseY;
 
+  // Waves
   if (previousLeftX !== null && Math.abs(leftX - previousLeftX) > waveThreshold) {
     flyZombies(-1, 5);
   }
@@ -269,6 +313,7 @@ function onResults(results) {
   }
   previousRightX = rightX;
 
+  // Hands-above-head + jump for laser
   const handsAboveHead = leftWristY < noseY && rightWristY < noseY;
   if (handsAboveHead) {
     if (now - lastCheckTime > 100) {
@@ -279,22 +324,22 @@ function onResults(results) {
     handsAboveHeadCount = 0;
   }
 
-	if (handsAboveHeadCount >= 10 && !showLaser && jumpDetected) {
-	  showLaser = true;
-	  laserTimer = 15;
-	  jumpDetected = false;
+  if (handsAboveHeadCount >= 10 && !showLaser && jumpDetected) {
+    showLaser = true;
+    laserTimer = 15;
+    jumpDetected = false;
 
-	  // Play laser sound
-	  const laserSound = document.getElementById('laserSound');
-	  laserSound.currentTime = 0;
-	  laserSound.play().catch(e => console.warn("⚠️ Laser sound failed to play:", e));
+    // Play laser sound
+    const laserSound = document.getElementById('laserSound');
+    laserSound.currentTime = 0;
+    laserSound.play().catch(e => console.warn("⚠️ Laser sound failed to play:", e));
 
-	  // Clear zombies
-	  score += zombies.length;
-	  zombies = [];
-	  scoreDisplay.textContent = score;
-	  handsAboveHeadCount = 0;
-	}
+    // Clear zombies
+    score += zombies.length;
+    zombies = [];
+    scoreDisplay.textContent = score;
+    handsAboveHeadCount = 0;
+  }
 }
 
 const pose = new Pose({
@@ -362,8 +407,6 @@ function gameLoop() {
     laserTimer--;
     if (laserTimer <= 0) showLaser = false;
   }
-  
-  
 
   requestAnimationFrame(gameLoop);
 }
@@ -385,7 +428,6 @@ function drawPoseLandmarks(landmarks) {
 
   ctx.restore();
 }
-
 
 function startTimer() {
   const interval = setInterval(() => {
